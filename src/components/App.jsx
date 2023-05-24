@@ -1,4 +1,4 @@
-import { Component } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getApiResponse, requestParameters } from 'pixabayApi/pixabay-api';
 import Searchbar from './Searchbar';
 import ImageGallery from './ImageGallery';
@@ -8,107 +8,104 @@ import Image from './Image';
 import Loader from './Loader';
 import css from './App.module.css';
 
-class App extends Component {
-  state = {
-    searchString: '',
-    gallery: [],
-    isLoading: false,
-    error: null,
-    isModalOpen: false,
-  };
+export default App;
 
-  async componentDidUpdate(_, prevState) {
-    const {
-      state: { searchString },
-      updateGallery,
-    } = this;
+function App() {
+  const [searchString, setSearchString] = useState('');
+  const [gallery, setGallery] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [largeImageURL, setLargeImageURL] = useState('');
+  const [largeImageAlt, setLargeImageAlt] = useState('');
 
-    if (prevState.searchString !== searchString) {
+  const prevSearchString = useRef('');
+  const prevGallery = useRef([]);
+
+  const updateGallery = useCallback(
+    searchString => {
+      try {
+        getApiResponse(searchString).then(response => {
+          if (response.totalHits === 0) {
+            alert(`Images by your request "${searchString}" did not found`);
+            return;
+          } else {
+            setGallery([...prevGallery.current, ...response.hits]);
+          }
+        });
+      } catch (error) {
+        setError(error);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [prevGallery]
+  );
+
+  useEffect(() => {
+    if (prevSearchString.current !== searchString) {
       requestParameters.page = 1;
-      this.setState({ gallery: [] });
+      setGallery([]);
+      prevGallery.current = [];
 
       if (searchString !== '') {
-        this.setState({ isLoading: true });
-        updateGallery(this.state.searchString);
+        setIsLoading(true);
+        updateGallery(searchString);
       }
     }
-  }
 
-  loadNextPage = () => {
-    this.setState({ isLoading: true });
-    this.updateGallery(this.state.searchString);
+    prevSearchString.current = searchString;
+  }, [searchString, updateGallery]);
+
+  useEffect(() => {
+    prevGallery.current = gallery;
+  }, [gallery]);
+
+  const loadNextPage = () => {
+    setIsLoading(true);
+    updateGallery(searchString);
   };
 
-  updateGallery = searchString => {
-    try {
-      getApiResponse(searchString).then(response => {
-        if (response.totalHits === 0) {
-          alert(`Images by your request "${searchString}" did not found`);
-          return;
-        } else {
-          this.setState({ gallery: [...this.state.gallery, ...response.hits] });
-        }
-      });
-    } catch (error) {
-      this.setState({ error });
-    } finally {
-      this.setState({ isLoading: false });
-    }
-  };
-
-  getSearchString = value => {
-    if (this.state.searchString !== value.searchString) {
-      this.setState({ searchString: value.searchString });
+  const getSearchString = value => {
+    if (searchString !== value.searchString) {
+      setSearchString(value.searchString);
     } else {
       alert(`You are actually looking at "${value.searchString}" pictures`);
     }
   };
 
-  openModal = ({ largeImageURL, tags }) => {
-    this.setState({ isModalOpen: true });
-    this.setState({ largeImageURL, tags });
+  const openModal = ({ largeImageURL, tags }) => {
+    setIsModalOpen(true);
+    setLargeImageURL(largeImageURL);
+    setLargeImageAlt(tags);
   };
 
-  closeModal = () => {
-    this.setState({ isModalOpen: false });
-    delete this.state.largeImageURL;
-    delete this.state.tags;
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setLargeImageURL('');
+    setLargeImageAlt('');
   };
 
-  render() {
-    const {
-      state: { gallery, isLoading, isModalOpen, largeImageURL, tags },
-      getSearchString,
-      loadNextPage,
-      openModal,
-      closeModal,
-    } = this;
+  return (
+    <div className={css.app}>
+      <Searchbar onSubmit={getSearchString} />
 
-    console.log(isLoading); //
+      {isLoading && requestParameters.page === 1 ? (
+        <Loader />
+      ) : (error !== null ? (<p>{error}</p>):
+        gallery.length > 0 && (
+          <ImageGallery gallery={gallery} onClick={openModal} />
+        )
+      )}
 
-    return (
-      <div className={css.app}>
-        <Searchbar onSubmit={getSearchString} />
+      {requestParameters.page !== 1 &&
+        (isLoading ? <Loader /> : <Button onClick={loadNextPage} />)}
 
-        {isLoading && requestParameters.page === 1 ? (
-          <Loader />
-        ) : (
-          gallery.length > 0 && (
-            <ImageGallery gallery={gallery} onClick={openModal} />
-          )
-        )}
-
-        {requestParameters.page !== 1 &&
-          (isLoading ? <Loader /> : <Button onClick={loadNextPage} />)}
-
-        {isModalOpen && (
-          <Modal onClose={closeModal}>
-            <Image URL={largeImageURL} tags={tags} />
-          </Modal>
-        )}
-      </div>
-    );
-  }
+      {isModalOpen && (
+        <Modal onClose={closeModal}>
+          <Image URL={largeImageURL} tags={largeImageAlt} />
+        </Modal>
+      )}
+    </div>
+  );
 }
-
-export default App;
